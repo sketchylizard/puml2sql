@@ -1,0 +1,71 @@
+@startuml
+!include schema.iuml
+
+skinparam roundcorner 5
+skinparam shadowing true
+skinparam linetype ortho
+skinparam packageStyle rectangle
+hide methods
+hide stereotypes
+
+table(scene) {
+    scene_id : integer primary
+    ---
+    name : text
+}
+
+table(light) {
+    light_id : integer primary
+    ---
+    name : text
+    flags : integer
+}
+
+scene  "0..*" -r- "1..*" light
+(scene, light) .. member
+
+table(member) {
+    scene_id : integer primary
+    light_id : integer notnull
+    unique(scene_id, light_id)
+}
+
+table(colors) {
+    color_id : integer primary
+    idx : integer primary
+    hue : integer
+    saturation : integer
+    value : integer
+    temperature : integer
+    transition : integer
+}
+
+table(light_map) {
+    light_id : integer primary
+    output_id : integer primary
+    ---
+    power : integer
+    color_id : integer
+    mode : integer
+    ---
+    glm_esn : integer generated(output_id >> 8)
+    glm_idx : integer generated(output_id & 0xff)
+}
+
+table(glm) {
+    esn : integer primary
+    ---
+    model : text
+    capabilities : integer
+    sw_version : integer
+    last_seen : integer
+    ---
+    output_count : integer generated(substr(model,5,1))
+
+}
+
+light -r- glm
+(light, glm) .. light_map
+light -u- colors : color_id
+
+@enduml
