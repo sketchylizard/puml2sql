@@ -15,11 +15,6 @@ args = parser.parse_args()
 current = None
 tables = []
 
-def removeParens(line):
-    b = line.find('(')
-    e = line.rfind(')')
-    return line[b + 1:e]
-
 class Table:
     def __init__(self, name):
         self.name = name
@@ -95,7 +90,7 @@ def parse_column(line):
                 line = ''
             else:
                 raise Exception("Unknown token {}".format(line))
-            current.fields.append(f)
+        current.fields.append(f)
     else:
         # we must have hit the end of the columns
         # look for table constraints now
