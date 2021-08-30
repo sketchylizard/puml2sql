@@ -1,0 +1,6 @@
+' Defines to make it easier to turn a PlantUML diagram into a schema.
+!define table(x) class x << (T, white) >>
+
+!define generated(x)\n<i><color:#555555>\t<&cog> x</color></i>
+!define primary <b><&key></b>
+!define notnull <b><&ban></b>
