@@ -82,6 +82,7 @@ def parse_column(line):
             if m[1] == 'primary':
                 f.primary = True
                 line = line[m.end(0):]
+                current.primaries.append(name)
             elif m[1] == 'notnull':
                 f.notNull = True
                 line = line[m.end(0):]
@@ -116,7 +117,9 @@ class SqlFormatter:
         pass
 
     def column(self, table, f):
-        primary = ' PRIMARY KEY' if f.primary else ''
+		# If only one field is marked as a primary key
+		# then we should add that as a field constraint.
+        primary = ' PRIMARY KEY' if (len(table.primaries) == 1 and f.primary) else ''
         notnull = ' NOT NULL' if f.notNull else ''
         generated = ' AS {}'.format(f.generated) if f.generated else ''
         return '	{} {}{}{}{}'.format(f.name, f.type.upper(), primary, notnull, generated)
@@ -129,11 +132,14 @@ class SqlFormatter:
 
     def table(self, t):
         fields = []
+
         for f in t.fields:
             handler = getattr(self, f.__class__.__name__)
             fields.append(handler(t, f))
         for c in t.constraints:
             fields.append(self.constraint(t, c.name, c.fields))
+		# If more than one field is marked as a primary key then we need
+		# to add a table constraint to specify them.
         if len(t.primaries) > 1:
             fields.append(self.constraint(t, 'PRIMARY KEY', t.primaries))
 
