@@ -13,6 +13,7 @@ parser.add_argument("file")
 args = parser.parse_args()
 
 tables = []
+views = []
 
 class column:
     def __init__(self, name, type):
@@ -83,14 +84,38 @@ class Table:
             # look for table constraints now
             return self.parse_TableConstraint(line)
 
+class View:
+    def __init__(self, name):
+        self.name = name
+        print("Creating view: {}".format(name))
+
+    def parse_join(self, line):
+        assert(line != '')
+        # get the name & type
+        m = re.match('(\w+)\.(\w+)\s*(<-|->)\s*(\w+)\.(\w+)', line)
+        if m:
+            self.table1 = (m[1], m[2])
+            self.table2 = (m[4], m[5])
+            self.join = 'left join' if m[3] == '<-' else 'join'
+            line = line[m.end(0):]
+            return self.parse_join
+        else:
+            # end of table
+            assert(line == '}')
+            return lookingForTable
+
 def lookingForTable(line):
     if line[:6] == "table(":
-        line = line[6:]
-        line = line[:line.find(')')]
+        line = line[6:line.find(')')]
         #print('Found table', line)
         table = Table(line)
         tables.append(table)
         return table.parse_column
+    elif line[:5] == 'view(':
+        line = line[5:line.find(')')]
+        view = View(line)
+        views.append(view)
+        return view.parse_join
     else:
         return lookingForTable
 
@@ -117,36 +142,76 @@ class SqlFormatter:
         pass
 
     def column(self, table, f):
-		# If only one field is marked as a primary key
-		# then we should add that as a field constraint.
+        # If only one field is marked as a primary key
+        # then we should add that as a field constraint.
         constraint =  ' PRIMARY KEY' if (len(table.primaries) == 1 and f.primary) else ''
         constraint += ' NOT NULL' if f.notNull else ''
         constraint += ' UNIQUE' if f.unique else ''
         constraint += ' AS {}'.format(f.generated) if f.generated else ''
-        return '	{} {}{}'.format(f.name, f.type.upper(), constraint)
+        return '    {} {}{}'.format(f.name, f.type.upper(), constraint)
 
     def constraint(self, table, name, fields):
-        return '	{}({})'.format(name.upper(), ', '.join(fields))
+        return '    {}({})'.format(name.upper(), ', '.join(fields))
 
-    def table(self, t):
-        fields = []
+    def formatTable(self, table):
+        fields = ['CREATE TABLE {}('.format(table.name)]
 
-        for f in t.fields:
+        for f in table.fields:
             handler = getattr(self, f.__class__.__name__)
-            fields.append(handler(t, f))
-        for c in t.constraints:
-            fields.append(self.constraint(t, c.name, c.fields))
-		# If more than one field is marked as a primary key then we need
-		# to add a table constraint to specify them.
-        if len(t.primaries) > 1:
-            fields.append(self.constraint(t, 'PRIMARY KEY', t.primaries))
+            fields.append(handler(table, f))
+        for c in table.constraints:
+            fields.append(self.constraint(table, c.name, c.fields))
+        # If more than one field is marked as a primary key then we need
+        # to add a table constraint to specify them.
+        if len(table.primaries) > 1:
+            fields.append(self.constraint(table, 'PRIMARY KEY', table.primaries))
 
-        s = 'CREATE TABLE {}(\n'.format(t.name)
-        s += ',\n'.join(fields)
-        s += '\n);'
-        print(s)
+        fields[-1] += ');'
+        return fields
 
-formatter = SqlFormatter()
+    def formatView(self, view):
+        fields = ['CREATE VIEW {} as'.format(view.name)]
+
+        fields.append("    select * from {t1} {join} {t2} on {t1}.{c1} == {t2}.{c2};"
+            .format(t1=view.table1[0], c1=view.table1[1],
+                    t2=view.table2[0], c2=view.table2[1],
+                    join=view.join))
+        return fields
+
+class CppFormatter:
+    def __init__(self):
+        self._sql = SqlFormatter()
+
+    def formatTable(self, table):
+        lines = ['const char* create_{} = R"sql('.format(table.name)]
+        prefix = ' ' * 4
+        for l in self._sql.formatTable(table):
+            lines.append('{}{}'.format(prefix, l))
+
+        if lines[-1][-1] == ';':
+            lines[-1] = lines[-1][:-1]
+        lines[-1] = lines[-1] + ')sql";'
+        return lines
+
+    def formatView(self, view):
+        lines = ['const char* create_{} = R"sql('.format(view.name)]
+        prefix = ' ' * 4
+        for l in self._sql.formatView(view):
+            lines.append('{}{}'.format(prefix, l))
+
+        if lines[-1][-1] == ';':
+            lines[-1] = lines[-1][:-1]
+        lines[-1] = lines[-1] + ')sql";'
+        return lines
+
+formatter = CppFormatter()
 
 for t in tables:
-    formatter.table(t)
+    lines = formatter.formatTable(t)
+    print('\n'.join(lines))
+    print('')
+
+for v in views:
+    lines = formatter.formatView(v)
+    print('\n'.join(lines))
+    print('')
